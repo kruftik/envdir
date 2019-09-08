@@ -6,10 +6,10 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const (
@@ -22,12 +22,26 @@ type Envdir struct {
 	env                  []string
 }
 
+func (e *Envdir) log(msg string, w io.Writer) {
+	// 2019-09-08 10:47:42.433 MSK [18] LOG
+	t := time.Now()
+	tz, _ := t.Zone()
+
+	msg = fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d.000 %s [X] ENVDIR:\t%s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), tz, msg)
+
+	if w != nil {
+		fmt.Fprint(w, msg)
+	} else {
+		fmt.Print(msg)
+	}
+}
+
 func (e *Envdir) fatal(msg string) int {
-	fmt.Fprint(e.errStream, msg)
+	e.log(msg, e.errStream)
 	return ExitCodeFatal
 }
 
-func (e *Envdir) Run(args []string) int {
+func (e *Envdir) run(args []string) int {
 	if len(args) < 3 {
 		return e.fatal("usage: envdir dir command\n")
 	}
@@ -85,49 +99,14 @@ func (e *Envdir) Run(args []string) int {
 		e.env = append(e.env, fileName+"="+v)
 	}
 
-	cmd := exec.Command(child, childArgs...)
-	cmd.Stdout = e.outStream
-	cmd.Stderr = e.errStream
-	cmd.Env = e.env
+	binary, err := exec.LookPath(child)
+	if err != nil {
+		return e.fatal(fmt.Sprintf("Cannot find '%s': %s\n", child, err))
+	}
 
-	err = cmd.Start()
+	err = syscall.Exec(binary, append([]string{child}, childArgs...), e.env)
 	if err != nil {
 		return e.fatal(fmt.Sprintf("Cannot start '%s': %s\n", child, err))
-	}
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-	go func(pid int) {
-		sig := <-sigs
-		fmt.Printf("Received signal, transmitting to child process %d\n", pid)
-
-		p, err := os.FindProcess(pid)
-		if err != nil {
-			fmt.Printf("Cannot find process %i", pid)
-			return
-		}
-
-		err = p.Signal(sig)
-		if err != nil {
-			fmt.Printf("Cannot transmit signal to process %d\n", pid)
-			return
-		}
-	}(cmd.Process.Pid)
-
-	if err != nil {
-		if exiterr, ok := err.(*exec.ExitError); ok {
-			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
-				return status.ExitStatus()
-			}
-		} else {
-			return e.fatal(fmt.Sprintf("%s\n", err.Error()))
-		}
-	}
-
-	err = cmd.Wait()
-	if err != nil {
-		return e.fatal(fmt.Sprintf("Cannot wait for '%s' completion: %s\n", child, err))
 	}
 
 	return ExitCodeOk

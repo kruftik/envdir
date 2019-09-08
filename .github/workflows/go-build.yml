@@ -16,4 +16,14 @@ jobs:
         uses: actions/checkout@v1
 
       - name: Build
-        run: go build -v .
+        run: |-
+          CGO_ENABLED=0
+          GOOS=linux
+          GOARCH=amd64
+          go build -ldflags="-w -s" -mod vendor -v
+
+      - name: Upload compiled binary
+        uses: actions/upload-artifact@master
+        with:
+          name: envdir
+          path: envdir

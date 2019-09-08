@@ -99,14 +99,49 @@ func (e *Envdir) run(args []string) int {
 		e.env = append(e.env, fileName+"="+v)
 	}
 
-	binary, err := exec.LookPath(child)
-	if err != nil {
-		return e.fatal(fmt.Sprintf("Cannot find '%s': %s\n", child, err))
-	}
+	cmd := exec.Command(child, childArgs...)
+	cmd.Stdout = e.outStream
+	cmd.Stderr = e.errStream
+	cmd.Env = e.env
 
-	err = syscall.Exec(binary, append([]string{child}, childArgs...), e.env)
+	err = cmd.Start()
 	if err != nil {
 		return e.fatal(fmt.Sprintf("Cannot start '%s': %s\n", child, err))
+	}
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	go func(pid int) {
+		sig := <-sigs
+		e.log(fmt.Sprintf("Received signal, transmitting to child process %d\n", pid), e.outStream)
+
+		p, err := os.FindProcess(pid)
+		if err != nil {
+			e.log(fmt.Sprintf("Cannot find process %i\n", pid), e.errStream)
+			return
+		}
+
+		err = p.Signal(sig)
+		if err != nil {
+			e.log(fmt.Sprintf("Cannot transmit signal to process %d\n", pid), e.errStream)
+			return
+		}
+	}(cmd.Process.Pid)
+
+	if err != nil {
+		if exiterr, ok := err.(*exec.ExitError); ok {
+			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+				return status.ExitStatus()
+			}
+		} else {
+			return e.fatal(fmt.Sprintf("%s\n", err.Error()))
+		}
+	}
+
+	err = cmd.Wait()
+	if err != nil {
+		return e.fatal(fmt.Sprintf("Cannot wait for '%s' completion: %s\n", child, err))
 	}
 
 	return ExitCodeOk

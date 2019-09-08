@@ -1,11 +1,10 @@
 name: GoBuild
 on: [push]
 jobs:
-  container:
-    image: golang:13-alpine
   build:
     name: Build
     runs-on: ubuntu-latest
+    image: golang:13-alpi
     steps:
       # - name: Set up Go 1.13
       #   uses: actions/setup-go@v1

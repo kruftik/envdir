@@ -1,4 +1,4 @@
-envdir [![CircleCI](https://circleci.com/gh/addsict/envdir.svg?style=svg)](https://circleci.com/gh/addsict/envdir)
+envdir
 ===
 
 Port of [daemontools' envdir](https://cr.yp.to/daemontools/envdir.html) in Golang.
@@ -6,7 +6,7 @@ Port of [daemontools' envdir](https://cr.yp.to/daemontools/envdir.html) in Golan
 install
 ---
 ```
-go get github.com/addsict/envdir
+go get github.com/kruftik/envdir
 ```
 
 usage
